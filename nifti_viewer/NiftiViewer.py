@@ -1,77 +1,87 @@
 import os
-import numpy as np
 import nibabel as nib
-import cv2
-from PyQt6.QtWidgets import QWidget, QVBoxLayout, QPushButton, QFileDialog
-from PyQt6.QtGui import QPixmap, QImage
+import numpy as np
+from PyQt5.QtWidgets import QWidget, QFileDialog, QVBoxLayout, QHBoxLayout, QPushButton, QLabel
+from PyQt5.QtGui import QImage, QPainter
+from PyQt5.QtCore import Qt
 
-class NiftiViewer(QWidget):  # Sınıf ismi dosya ismi ile aynı olmalı
-    def __init__(self):
+
+class NiftiViewer(QWidget):
+    def __init__(self, main_window=None):
         super().__init__()
-        self.setStyleSheet("background-color: #A0A0A0;")
-        self.layout = QVBoxLayout()
-        self.setLayout(self.layout)
+        self.main_window = main_window
+        self.initUI()
 
-        self.button = QPushButton("NIfTI Dosyası Yükle")
-        self.button.clicked.connect(self.load_nifti_file)
-        self.layout.addWidget(self.button)
+    def initUI(self):
+        layout = QVBoxLayout(self)
 
-    def load_nifti_file(self):
-        file_path, _ = QFileDialog.getOpenFileName(self, "NIfTI Dosyası Seç", "", "NIfTI Dosyaları (*.nii *.nii.gz)")
+        openButton = QPushButton("NIfTI Dosyası Aç", self)
+        openButton.clicked.connect(self.load_nifti)
+        layout.addWidget(openButton)
+
+        self.label = QLabel("Yüklenen dosya: Yok", self)
+        layout.addWidget(self.label)
+
+        self.setLayout(layout)
+
+    def load_nifti(self):
+        file_path, _ = QFileDialog.getOpenFileName(self, "NIfTI Dosyası Aç", "", "NIfTI Files (*.nii *.nii.gz)")
         if file_path:
-            try:
-                nifti_img = nib.load(file_path)
-                data = nifti_img.get_fdata()
-                self.display_slices(data)
-            except Exception as e:
-                print(f"[HATA] NIfTI dosyası yüklenemedi: {e}")
+            self.label.setText(f"Yüklenen dosya: {os.path.basename(file_path)}")
+            img = nib.load(file_path)
+            data = img.get_fdata()
+            self.display_slices(data)
 
     def display_slices(self, data):
-        # Verileri ortadan birer kesit olarak al
-        axial = data[:, :, data.shape[2] // 2]
-        sagital = data[data.shape[0] // 2, :, :]
-        coronal = data[:, data.shape[1] // 2, :]
+        mid_slices = {
+            "Axial": data[:, :, data.shape[2] // 2],
+            "Coronal": data[:, data.shape[1] // 2, :],
+            "Sagital": data[data.shape[0] // 2, :, :]
+        }
 
-        # 8-bit'e çevir ve normalize et
-        def prepare_image(slice_):
-            slice_ = np.rot90(slice_)  # Doğru açıyla göstermek için
-            slice_ = cv2.normalize(slice_, None, 0, 255, cv2.NORM_MINMAX)
-            return slice_.astype(np.uint8)
-
-        # Görselleri Qt formatına çevir
-        def to_qpixmap(slice_):
-            h, w = slice_.shape
-            bytes_per_line = w
-            q_image = QImage(slice_.data, w, h, bytes_per_line, QImage.Format.Format_Grayscale8)
-            return QPixmap.fromImage(q_image)
-
-        axial_pixmap = to_qpixmap(prepare_image(axial))
-        sagital_pixmap = to_qpixmap(prepare_image(sagital))
-        coronal_pixmap = to_qpixmap(prepare_image(coronal))
-
-        # Ana pencere sınıfındaki paint_image_viewer fonksiyonu kullanılacak
-        # image değerini set etmek için ana pencerenin imageViewer widget'larına eriş
-        for widget in self.parent().parent().findChildren(QWidget):
+        for widget in self.main_window.findChildren(QWidget):
             if widget.objectName() == "imageViewer":
-                layout = widget.layout()
-                slider = layout.itemAt(1).widget() if layout.count() > 1 else None
-                if slider:
-                    layout.removeWidget(slider)
-                    slider.setParent(None)
+                slice_type = widget.toolTip()
+                if slice_type in mid_slices:
+                    slice_data = mid_slices[slice_type]
+                    image = self.convert_to_qimage(slice_data)
 
-                if "Axial" in widget.toolTip() or "Axial" in widget.windowTitle():
-                    image = axial_pixmap
-                elif "Sagital" in widget.toolTip() or "Sagital" in widget.windowTitle():
-                    image = sagital_pixmap
-                elif "Coronal" in widget.toolTip() or "Coronal" in widget.windowTitle():
-                    image = coronal_pixmap
-                else:
-                    image = None
+                    def create_paint_event(img):
+                        def paintEvent(event):
+                            painter = QPainter(widget)
+                            rect = widget.rect()
+                            scaled_img = img.scaled(rect.size(), Qt.KeepAspectRatio, Qt.SmoothTransformation)
+                            x = (rect.width() - scaled_img.width()) // 2
+                            y = (rect.height() - scaled_img.height()) // 2
+                            painter.drawImage(x, y, scaled_img)
+                        return paintEvent
 
-                if image:
-                    def paint(event, image=image, title=widget.windowTitle()):
-                        from main import paint_image_viewer
-                        paint_image_viewer(widget, title, is_empty=False, image=image)
-                    widget.paintEvent = paint
+                    widget.paintEvent = create_paint_event(image)
                     widget.update()
 
+    def convert_to_qimage(self, data):
+        norm_data = (255 * (data - np.min(data)) / (np.max(data) - np.min(data))).astype(np.uint8)
+        h, w = norm_data.shape
+        return QImage(norm_data.data, w, h, w, QImage.Format_Grayscale8).copy()
+
+
+def show_plugin(main_window):
+    from PyQt5.QtWidgets import QVBoxLayout, QWidget, QHBoxLayout
+
+    plugin_widget = QWidget()
+    plugin_layout = QVBoxLayout(plugin_widget)
+
+    viewer = NiftiViewer(main_window=main_window)
+    plugin_layout.addWidget(viewer)
+
+    image_layout = QHBoxLayout()
+
+    for name in ["Axial", "Coronal", "Sagital"]:
+        w = QWidget()
+        w.setObjectName("imageViewer")
+        w.setToolTip(name)
+        w.setMinimumSize(300, 300)
+        image_layout.addWidget(w)
+
+    plugin_layout.addLayout(image_layout)
+    main_window.setCentralWidget(plugin_widget)
