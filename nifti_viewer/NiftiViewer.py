@@ -1,9 +1,9 @@
 import os
 import nibabel as nib
 import numpy as np
-from PyQt5.QtWidgets import QWidget, QFileDialog, QVBoxLayout, QHBoxLayout, QPushButton, QLabel
-from PyQt5.QtGui import QImage, QPainter
-from PyQt5.QtCore import Qt
+from PyQt6.QtWidgets import QWidget, QFileDialog, QVBoxLayout, QHBoxLayout, QPushButton, QLabel
+from PyQt6.QtGui import QImage, QPainter
+from PyQt6.QtCore import Qt
 
 
 class NiftiViewer(QWidget):
@@ -50,7 +50,7 @@ class NiftiViewer(QWidget):
                         def paintEvent(event):
                             painter = QPainter(widget)
                             rect = widget.rect()
-                            scaled_img = img.scaled(rect.size(), Qt.KeepAspectRatio, Qt.SmoothTransformation)
+                            scaled_img = img.scaled(rect.size(), Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation)
                             x = (rect.width() - scaled_img.width()) // 2
                             y = (rect.height() - scaled_img.height()) // 2
                             painter.drawImage(x, y, scaled_img)
@@ -62,11 +62,11 @@ class NiftiViewer(QWidget):
     def convert_to_qimage(self, data):
         norm_data = (255 * (data - np.min(data)) / (np.max(data) - np.min(data))).astype(np.uint8)
         h, w = norm_data.shape
-        return QImage(norm_data.data, w, h, w, QImage.Format_Grayscale8).copy()
+        return QImage(norm_data.data, w, h, w, QImage.Format.Format_Grayscale8).copy()
 
 
 def show_plugin(main_window):
-    from PyQt5.QtWidgets import QVBoxLayout, QWidget, QHBoxLayout
+    from PyQt6.QtWidgets import QVBoxLayout, QWidget, QHBoxLayout
 
     plugin_widget = QWidget()
     plugin_layout = QVBoxLayout(plugin_widget)
