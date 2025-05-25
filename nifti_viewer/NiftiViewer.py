@@ -1,7 +1,7 @@
 import os
 import nibabel as nib
 import numpy as np
-from PyQt6.QtWidgets import QWidget, QFileDialog, QVBoxLayout, QHBoxLayout, QPushButton, QLabel
+from PyQt6.QtWidgets import QWidget, QFileDialog, QVBoxLayout, QPushButton, QLabel
 from PyQt6.QtGui import QImage, QPainter
 from PyQt6.QtCore import Qt
 
@@ -40,8 +40,9 @@ class NiftiViewer(QWidget):
         }
 
         for widget in self.main_window.findChildren(QWidget):
-            if widget.objectName() == "imageViewer":
-                slice_type = widget.toolTip()
+            name = widget.objectName()
+            if name in ["axial_view", "sagittal_view", "coronal_view"]:
+                slice_type = name.replace("_view", "")  # "axial_view" → "axial"
                 if slice_type in mid_slices:
                     slice_data = mid_slices[slice_type]
                     image = self.convert_to_qimage(slice_data)
@@ -50,7 +51,10 @@ class NiftiViewer(QWidget):
                         def paintEvent(event):
                             painter = QPainter(widget)
                             rect = widget.rect()
-                            scaled_img = img.scaled(rect.size(), Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation)
+                            scaled_img = img.scaled(
+                                rect.size(), Qt.AspectRatioMode.KeepAspectRatio,
+                                Qt.TransformationMode.SmoothTransformation
+                            )
                             x = (rect.width() - scaled_img.width()) // 2
                             y = (rect.height() - scaled_img.height()) // 2
                             painter.drawImage(x, y, scaled_img)
@@ -58,6 +62,7 @@ class NiftiViewer(QWidget):
 
                     widget.paintEvent = create_paint_event(image)
                     widget.update()
+
 
     def convert_to_qimage(self, data):
         norm_data = (255 * (data - np.min(data)) / (np.max(data) - np.min(data))).astype(np.uint8)
